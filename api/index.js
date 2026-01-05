@@ -2,18 +2,18 @@ const { addonBuilder, getRouter } = require('stremio-addon-sdk');
 const fetch = require('node-fetch');
 
 const builder = new addonBuilder({
-    id: 'com.au.sports.dynamic.fixed',
-    version: '4.5.0',
-    name: 'AU Sports Live',
-    description: 'Live Australian Sports Feeds',
+    id: 'com.au.full.list',
+    version: '5.0.0',
+    name: 'AU Full Channel List',
+    description: 'Every Available AU Channel',
     resources: ['catalog', 'stream'],
     types: ['tv'],
-    idPrefixes: ['ausports_'],
-    catalogs: [{ type: 'tv', id: 'ausports_cat', name: 'AU Sports' }]
+    idPrefixes: ['auchannel_'],
+    catalogs: [{ type: 'tv', id: 'au_all', name: 'AU All Channels' }]
 });
 
-// Using the Brisbane RAW file - very reliable for Australian Sports
-const M3U_URL = 'https://i.mjh.nz/au/Brisbane/raw-tv.m3u8';
+// Sydney usually has the most robust list
+const M3U_URL = 'https://i.mjh.nz/au/Sydney/raw-tv.m3u8';
 
 async function getChannels() {
     try {
@@ -30,23 +30,18 @@ async function getChannels() {
                 
                 if (nameMatch && url && url.startsWith('http')) {
                     const name = nameMatch[1].trim();
-                    const nameLower = name.toLowerCase();
-                    // Filter specifically for the "Big 3" sports keywords
-                    if (nameLower.includes('sport') || nameLower.includes('fox') || nameLower.includes('kayo')) {
-                        channels.push({
-                            id: `ausports_${name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}`,
-                            name: name,
-                            url: url,
-                            logo: logoMatch ? logoMatch[1] : ''
-                        });
-                    }
+                    // NO FILTER: This will show you EVERY channel Matt has available
+                    channels.push({
+                        id: `auchannel_${name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}`,
+                        name: name,
+                        url: url,
+                        logo: logoMatch ? logoMatch[1] : ''
+                    });
                 }
             }
         }
         return channels;
-    } catch (e) {
-        return [];
-    }
+    } catch (e) { return []; }
 }
 
 builder.defineCatalogHandler(async () => {
@@ -76,18 +71,7 @@ builder.defineStreamHandler(async (args) => {
 });
 
 const router = getRouter(builder.getInterface());
-
 module.exports = (req, res) => {
-    // These headers are the "secret sauce" for Omni/Stremio stability
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-
-    if (req.method === 'OPTIONS') {
-        res.status(204).end();
-        return;
-    }
-
     router(req, res, () => res.status(404).end());
 };
