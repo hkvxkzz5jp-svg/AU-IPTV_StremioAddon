@@ -2,98 +2,66 @@ const { addonBuilder, getRouter } = require('stremio-addon-sdk');
 const fetch = require('node-fetch');
 
 const manifest = {
-    id: 'com.au.sports.final.fixed',
-    version: '1.0.1',
+    id: 'com.au.sports.direct',
+    version: '1.2.0',
     name: 'AU Sports Live',
-    description: 'Australian Sports Channels',
-    resources: ['catalog', 'meta', 'stream'],
+    description: 'Direct Sports Access (No Config Required)',
+    resources: ['catalog', 'stream', 'meta'],
     types: ['tv'],
     idPrefixes: ['ausports_'],
-    catalogs: [
-        {
-            type: 'tv',
-            id: 'ausports_cat',
-            name: 'AU Sports'
-        }
-    ]
+    catalogs: [{ type: 'tv', id: 'ausports_cat', name: 'AU Sports' }]
 };
 
 const builder = new addonBuilder(manifest);
 
-// Standard fetcher
-async function fetchChannels() {
-    const res = await fetch('https://i.mjh.nz/au/Brisbane/raw.json');
-    if (!res.ok) throw new Error('Fetch failed');
-    const data = await res.json();
-    return data.channels || {};
-}
+// We hardcode the best region (Brisbane/Sydney) to ensure it works without the landing page
+const DATA_URL = 'https://i.mjh.nz/au/Brisbane/raw.json';
 
-builder.defineCatalogHandler(async (args) => {
+builder.defineCatalogHandler(async () => {
     try {
-        const channels = await fetchChannels();
+        const res = await fetch(DATA_URL);
+        const data = await res.json();
+        const channels = data.channels || {};
+        
         const metas = Object.keys(channels)
             .filter(key => {
-                const name = channels[key].name.toLowerCase();
-                return name.includes('sport') || name.includes('fox') || name.includes('kayo');
+                const name = (channels[key].name || "").toLowerCase();
+                return name.includes('sport') || name.includes('kayo') || name.includes('fox');
             })
             .map(key => ({
                 id: `ausports_${key}`,
                 type: 'tv',
                 name: channels[key].name,
                 poster: channels[key].logo,
-                posterShape: 'square', // Helps apps like Omni render correctly
-                description: 'Live Feed'
+                posterShape: 'square'
             }));
 
-        return { metas, cacheMaxAge: 3600 };
+        return { metas };
     } catch (e) {
         return { metas: [] };
     }
 });
 
 builder.defineMetaHandler(async (args) => {
-    const channels = await fetchChannels();
+    const res = await fetch(DATA_URL);
+    const data = await res.json();
     const id = args.id.replace('ausports_', '');
-    const ch = channels[id];
-    if (ch) {
-        return {
-            meta: {
-                id: args.id,
-                type: 'tv',
-                name: ch.name,
-                poster: ch.logo,
-                posterShape: 'square',
-                background: ch.logo,
-                description: `Live Stream: ${ch.name}`
-            }
-        };
-    }
-    return { meta: {} };
+    const ch = data.channels[id];
+    return { meta: ch ? { id: args.id, type: 'tv', name: ch.name, poster: ch.logo, background: ch.logo, posterShape: 'square' } : {} };
 });
 
 builder.defineStreamHandler(async (args) => {
-    const channels = await fetchChannels();
+    const res = await fetch(DATA_URL);
+    const data = await res.json();
     const id = args.id.replace('ausports_', '');
-    const ch = channels[id];
-    return { 
-        streams: ch ? [{ url: ch.url, title: 'Live Stream' }] : [] 
-    };
+    const ch = data.channels[id];
+    return { streams: ch ? [{ url: ch.url, title: 'Live Stream' }] : [] };
 });
 
 const router = getRouter(builder.getInterface());
 
 module.exports = (req, res) => {
-    // FORCE HEADERS - Omni needs these to trust the "format"
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Headers', '*');
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-
-    if (req.method === 'OPTIONS') {
-        res.status(204).end();
-        return;
-    }
-
-    router(req, res, () => {
-        res.status(404).send('Not found');
-    });
+    router(req, res, () => { res.status(404).send('Not found'); });
 };
