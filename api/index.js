@@ -17,17 +17,26 @@ const manifest = {
 
 const builder = new addonBuilder(manifest);
 
-// This function fetches the live channel list from the internet
 async function getChannels() {
-    const res = await fetch('https://i.mjh.nz/au/Brisbane/raw.json');
-    const data = await res.json();
-    return Object.values(data.channels).map(ch => ({
-        id: ch.name.toLowerCase().replace(/\s+/g, '-'),
-        name: ch.name,
-        logo: ch.logo,
-        url: ch.url,
-        group: ch.group || ''
-    }));
+    try {
+        const res = await fetch('https://i.mjh.nz/au/Brisbane/raw.json');
+        const data = await res.json();
+        // The data is an object with a 'channels' key
+        const channelData = data.channels || {};
+        return Object.keys(channelData).map(key => {
+            const ch = channelData[key];
+            return {
+                id: key.toLowerCase().replace(/[^a-z0-9]/g, '-'),
+                name: ch.name || key,
+                logo: ch.logo || '',
+                url: ch.url || '',
+                group: ch.group || ''
+            };
+        });
+    } catch (e) {
+        console.error("Fetch error:", e);
+        return [];
+    }
 }
 
 builder.defineCatalogHandler(async (args) => {
@@ -35,12 +44,11 @@ builder.defineCatalogHandler(async (args) => {
     let results = channels;
 
     if (args.id === 'auiptv_sports') {
-        // This looks for anything with "Sport" in the name or group
         results = channels.filter(c => 
-            c.group.toLowerCase().includes('sport') || 
-            c.name.toLowerCase().includes('sport') ||
-            c.name.toLowerCase().includes('kayo') ||
-            c.name.toLowerCase().includes('optus')
+            (c.group && c.group.toLowerCase().includes('sport')) || 
+            (c.name && c.name.toLowerCase().includes('sport')) ||
+            (c.name && c.name.toLowerCase().includes('kayo')) ||
+            (c.name && c.name.toLowerCase().includes('fox'))
         );
     }
 
@@ -51,15 +59,32 @@ builder.defineCatalogHandler(async (args) => {
             name: c.name,
             poster: c.logo,
             background: c.logo,
-            description: `Live from AU`
+            description: `Category: ${c.group || 'Live TV'}`
         }))
     };
+});
+
+builder.defineMetaHandler(async (args) => {
+    const channels = await getChannels();
+    const channel = channels.find(c => `auiptv_${c.id}` === args.id);
+    if (channel) {
+        return {
+            meta: {
+                id: `auiptv_${channel.id}`,
+                type: 'tv',
+                name: channel.name,
+                poster: channel.logo,
+                description: `Watching ${channel.name} live.`
+            }
+        };
+    }
+    return { meta: {} };
 });
 
 builder.defineStreamHandler(async (args) => {
     const channels = await getChannels();
     const channel = channels.find(c => `auiptv_${c.id}` === args.id);
-    return { streams: channel ? [{ url: channel.url }] : [] };
+    return { streams: channel ? [{ url: channel.url, title: 'Live Stream' }] : [] };
 });
 
 const addonInterface = builder.getInterface();
