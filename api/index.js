@@ -2,7 +2,7 @@ const { addonBuilder, getRouter } = require('stremio-addon-sdk');
 const fetch = require('node-fetch');
 
 const manifest = {
-    id: 'com.au.sports.live.fix',
+    id: 'com.au.sports.final.test',
     version: '1.0.0',
     name: 'AU Sports Live',
     description: 'Live AU Sports Feeds',
@@ -57,17 +57,9 @@ builder.defineStreamHandler(async (args) => {
 const router = getRouter(builder.getInterface());
 
 module.exports = (req, res) => {
-    // ESSENTIAL FOR APPS LIKE OMNI
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Content-Type', 'application/json; charset=utf-8'); // Tells Omni exactly what this is
     
-    // Handle the "Pre-check" from Omni
-    if (req.method === 'OPTIONS') {
-        res.status(204).end();
-        return;
-    }
-
     router(req, res, () => {
         res.status(404).send('Not found');
     });
