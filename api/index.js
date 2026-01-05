@@ -69,4 +69,13 @@ builder.defineStreamHandler((args) => {
     return Promise.resolve({ streams: [] });
 });
 
-module.exports = builder.getInterface();
+// --- DELETE THE OLD module.exports LINE AND PASTE THIS INSTEAD ---
+const addonInterface = builder.getInterface();
+const { getRouter } = require('stremio-addon-sdk');
+const router = getRouter(addonInterface);
+
+module.exports = (req, res) => {
+    router(req, res, () => {
+        res.status(404).send('Not found');
+    });
+};
