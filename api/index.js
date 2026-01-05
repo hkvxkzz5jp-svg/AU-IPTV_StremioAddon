@@ -5,7 +5,7 @@ const manifest = {
     id: 'com.joshargh.auiptv.custom',
     version: '1.0.0',
     name: 'AU IPTV (Sports Fixed)',
-    description: 'Live AU Channels - Sports Category Forced',
+    description: 'Live AU Channels',
     resources: ['catalog', 'meta', 'stream'],
     types: ['tv'],
     idPrefixes: ['auiptv_'],
@@ -17,64 +17,59 @@ const manifest = {
 
 const builder = new addonBuilder(manifest);
 
-async function getChannels() {
+// We use a simple URL that is more stable for Vercel
+const SOURCE_URL = 'https://i.mjh.nz/au/Brisbane/raw.json';
+
+builder.defineCatalogHandler(async (args) => {
     try {
-        const res = await fetch('https://i.mjh.nz/au/Brisbane/raw.json');
+        const res = await fetch(SOURCE_URL);
         const data = await res.json();
-        // The data is an object with a 'channels' key
         const channelData = data.channels || {};
-        return Object.keys(channelData).map(key => {
+        
+        let channels = Object.keys(channelData).map(key => {
             const ch = channelData[key];
             return {
-                id: key.toLowerCase().replace(/[^a-z0-9]/g, '-'),
+                id: `auiptv_${key.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+                type: 'tv',
                 name: ch.name || key,
-                logo: ch.logo || '',
-                url: ch.url || '',
+                poster: ch.logo || '',
+                background: ch.logo || '',
+                description: ch.group || 'AU Live TV',
                 group: ch.group || ''
             };
         });
+
+        if (args.id === 'auiptv_sports') {
+            channels = channels.filter(c => 
+                c.group.toLowerCase().includes('sport') || 
+                c.name.toLowerCase().includes('sport') ||
+                c.name.toLowerCase().includes('kayo') ||
+                c.name.toLowerCase().includes('fox') ||
+                c.name.toLowerCase().includes('racing')
+            );
+        }
+
+        return { metas: channels };
     } catch (e) {
-        console.error("Fetch error:", e);
-        return [];
+        console.error(e);
+        return { metas: [] };
     }
-}
-
-builder.defineCatalogHandler(async (args) => {
-    const channels = await getChannels();
-    let results = channels;
-
-    if (args.id === 'auiptv_sports') {
-        results = channels.filter(c => 
-            (c.group && c.group.toLowerCase().includes('sport')) || 
-            (c.name && c.name.toLowerCase().includes('sport')) ||
-            (c.name && c.name.toLowerCase().includes('kayo')) ||
-            (c.name && c.name.toLowerCase().includes('fox'))
-        );
-    }
-
-    return {
-        metas: results.map(c => ({
-            id: `auiptv_${c.id}`,
-            type: 'tv',
-            name: c.name,
-            poster: c.logo,
-            background: c.logo,
-            description: `Category: ${c.group || 'Live TV'}`
-        }))
-    };
 });
 
 builder.defineMetaHandler(async (args) => {
-    const channels = await getChannels();
-    const channel = channels.find(c => `auiptv_${c.id}` === args.id);
-    if (channel) {
+    const res = await fetch(SOURCE_URL);
+    const data = await res.json();
+    const id = args.id.replace('auiptv_', '');
+    const ch = data.channels[id] || Object.values(data.channels).find(c => c.name.toLowerCase().replace(/[^a-z0-9]/g, '-') === id);
+
+    if (ch) {
         return {
             meta: {
-                id: `auiptv_${channel.id}`,
+                id: args.id,
                 type: 'tv',
-                name: channel.name,
-                poster: channel.logo,
-                description: `Watching ${channel.name} live.`
+                name: ch.name,
+                poster: ch.logo,
+                description: `Watch ${ch.name} Live.`
             }
         };
     }
@@ -82,9 +77,12 @@ builder.defineMetaHandler(async (args) => {
 });
 
 builder.defineStreamHandler(async (args) => {
-    const channels = await getChannels();
-    const channel = channels.find(c => `auiptv_${c.id}` === args.id);
-    return { streams: channel ? [{ url: channel.url, title: 'Live Stream' }] : [] };
+    const res = await fetch(SOURCE_URL);
+    const data = await res.json();
+    const id = args.id.replace('auiptv_', '');
+    const ch = data.channels[id] || Object.values(data.channels).find(c => c.name.toLowerCase().replace(/[^a-z0-9]/g, '-') === id);
+    
+    return { streams: ch ? [{ url: ch.url, title: 'Live Stream' }] : [] };
 });
 
 const addonInterface = builder.getInterface();
