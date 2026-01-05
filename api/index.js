@@ -66,5 +66,12 @@ builder.defineStreamHandler(async (args) => {
 const router = getRouter(builder.getInterface());
 
 module.exports = (req, res) => {
-    router(req, res, () => { res.status(404).send('Not found'); });
+    // These lines tell Omni "You are allowed to read this data"
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', '*');
+    res.setHeader('Content-Type', 'application/json');
+    
+    router(req, res, () => { 
+        res.status(404).send('Not found'); 
+    });
 };
