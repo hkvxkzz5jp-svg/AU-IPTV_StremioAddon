@@ -2,11 +2,11 @@ const { addonBuilder, getRouter } = require('stremio-addon-sdk');
 const fetch = require('node-fetch');
 
 const manifest = {
-    id: 'com.au.sports.direct',
-    version: '1.2.0',
+    id: 'com.au.sports.fixed.final',
+    version: '1.5.0',
     name: 'AU Sports Live',
-    description: 'Direct Sports Access (No Config Required)',
-    resources: ['catalog', 'stream', 'meta'],
+    description: 'Australian Sports Channels',
+    resources: ['catalog', 'stream'],
     types: ['tv'],
     idPrefixes: ['ausports_'],
     catalogs: [{ type: 'tv', id: 'ausports_cat', name: 'AU Sports' }]
@@ -14,25 +14,22 @@ const manifest = {
 
 const builder = new addonBuilder(manifest);
 
-// We hardcode the best region (Brisbane/Sydney) to ensure it works without the landing page
-const DATA_URL = 'https://i.mjh.nz/au/Brisbane/raw.json';
-
-builder.defineCatalogHandler(async () => {
+builder.defineCatalogHandler(async (args) => {
     try {
-        const res = await fetch(DATA_URL);
+        const res = await fetch('https://i.mjh.nz/au/Sydney/raw.json');
         const data = await res.json();
-        const channels = data.channels || {};
         
-        const metas = Object.keys(channels)
+        // Convert the object into a list Stremio understands
+        const metas = Object.keys(data.channels)
             .filter(key => {
-                const name = (channels[key].name || "").toLowerCase();
-                return name.includes('sport') || name.includes('kayo') || name.includes('fox');
+                const name = data.channels[key].name.toLowerCase();
+                return name.includes('sport') || name.includes('fox') || name.includes('kayo');
             })
             .map(key => ({
                 id: `ausports_${key}`,
                 type: 'tv',
-                name: channels[key].name,
-                poster: channels[key].logo,
+                name: data.channels[key].name,
+                poster: data.channels[key].logo,
                 posterShape: 'square'
             }));
 
@@ -42,26 +39,35 @@ builder.defineCatalogHandler(async () => {
     }
 });
 
-builder.defineMetaHandler(async (args) => {
-    const res = await fetch(DATA_URL);
-    const data = await res.json();
-    const id = args.id.replace('ausports_', '');
-    const ch = data.channels[id];
-    return { meta: ch ? { id: args.id, type: 'tv', name: ch.name, poster: ch.logo, background: ch.logo, posterShape: 'square' } : {} };
-});
-
 builder.defineStreamHandler(async (args) => {
-    const res = await fetch(DATA_URL);
-    const data = await res.json();
-    const id = args.id.replace('ausports_', '');
-    const ch = data.channels[id];
-    return { streams: ch ? [{ url: ch.url, title: 'Live Stream' }] : [] };
+    try {
+        const res = await fetch('https://i.mjh.nz/au/Sydney/raw.json');
+        const data = await res.json();
+        const id = args.id.replace('ausports_', '');
+        const ch = data.channels[id];
+        return { streams: ch ? [{ url: ch.url, title: 'Live Stream' }] : [] };
+    } catch (e) {
+        return { streams: [] };
+    }
 });
 
-const router = getRouter(builder.getInterface());
+const addonInterface = builder.getInterface();
+const router = getRouter(addonInterface);
 
 module.exports = (req, res) => {
+    // These 3 lines are the "magic" for Omni/Stremio
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', '*');
-    router(req, res, () => { res.status(404).send('Not found'); });
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+    if (req.method === 'OPTIONS') {
+        res.writeHead(204);
+        res.end();
+        return;
+    }
+
+    router(req, res, () => {
+        res.statusCode = 404;
+        res.end();
+    });
 };
