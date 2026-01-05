@@ -2,75 +2,70 @@ const { addonBuilder, getRouter } = require('stremio-addon-sdk');
 const fetch = require('node-fetch');
 
 const builder = new addonBuilder({
-    id: 'com.au.full.stable',
-    version: '6.0.0',
-    name: 'AU Stable Channels',
+    id: 'com.au.sports.final.fixed',
+    version: '7.0.0',
+    name: 'AU Sports Final',
     resources: ['catalog', 'stream'],
     types: ['tv'],
     idPrefixes: ['auchannel_'],
-    catalogs: [{ type: 'tv', id: 'au_all', name: 'AU All Channels' }]
+    catalogs: [{ type: 'tv', id: 'au_all', name: 'AU Channels' }]
 });
 
-const M3U_URL = 'https://i.mjh.nz/au/Sydney/raw-tv.m3u8';
+// We switch to the KODI-formatted list which is often more compatible
+const M3U_URL = 'https://i.mjh.nz/au/Sydney/kodi-tv.m3u8';
 
-// Global cache to ensure IDs match between catalog and stream requests
-let channelCache = [];
-
-async function refreshChannels() {
+async function getChannels() {
     try {
         const res = await fetch(M3U_URL);
         const text = await res.text();
         const lines = text.split('\n');
-        const tempChannels = [];
+        const channels = [];
 
         for (let i = 0; i < lines.length; i++) {
             if (lines[i].startsWith('#EXTINF')) {
-                const nameMatch = lines[i].match(/,(.*)$/);
-                const logoMatch = lines[i].match(/tvg-logo="(.*?)"/);
-                const url = lines[i+1]?.trim();
+                const name = lines[i].match(/,(.*)$/)?.[1]?.trim();
+                const logo = lines[i].match(/tvg-logo="(.*?)"/)?.[1];
+                let url = lines[i+1]?.trim();
                 
-                if (nameMatch && url && url.startsWith('http')) {
-                    const name = nameMatch[1].trim();
-                    // Generate a clean ID once
-                    const cleanId = name.toLowerCase().replace(/[^a-z0-9]/g, '');
-                    tempChannels.push({
-                        id: `auchannel_${cleanId}`,
+                if (name && url && url.startsWith('http')) {
+                    // Matt Huisman's Kodi links often have pipe | headers in them
+                    // We need to split those out for Stremio
+                    const urlParts = url.split('|');
+                    const cleanUrl = urlParts[0];
+
+                    channels.push({
+                        id: `auchannel_${name.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
                         name: name,
-                        url: url,
-                        logo: logoMatch ? logoMatch[1] : ''
+                        url: cleanUrl,
+                        logo: logo || ''
                     });
                 }
             }
         }
-        channelCache = tempChannels;
-        return channelCache;
+        return channels;
     } catch (e) { return []; }
 }
 
 builder.defineCatalogHandler(async () => {
-    const channels = await refreshChannels();
-    return { metas: channels.map(ch => ({ 
-        id: ch.id, 
-        type: 'tv', 
-        name: ch.name, 
-        poster: ch.logo, 
-        posterShape: 'square' 
-    })) };
+    const channels = await getChannels();
+    return { metas: channels.map(ch => ({ id: ch.id, type: 'tv', name: ch.name, poster: ch.logo })) };
 });
 
 builder.defineStreamHandler(async (args) => {
-    // If cache is empty, fill it
-    if (channelCache.length === 0) await refreshChannels();
-    
-    const ch = channelCache.find(c => c.id === args.id);
+    const channels = await getChannels();
+    const ch = channels.find(c => c.id === args.id);
     if (ch) {
         return {
             streams: [{
                 title: 'Live Stream',
                 url: ch.url,
-                behaviorHints: { 
+                behaviorHints: {
                     isLive: true,
-                    proxyHeaders: { "User-Agent": "Mozilla/5.0" }
+                    // THESE HEADERS ARE THE FIX
+                    proxyHeaders: {
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36",
+                        "Referer": "https://www.matthuisman.nz/"
+                    }
                 }
             }]
         };
@@ -81,6 +76,5 @@ builder.defineStreamHandler(async (args) => {
 const router = getRouter(builder.getInterface());
 module.exports = (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', '*');
     router(req, res, () => res.status(404).end());
 };
