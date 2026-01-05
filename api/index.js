@@ -1,5 +1,6 @@
 const { addonBuilder, getRouter } = require('stremio-addon-sdk');
 
+// IDs must match the idPrefix "ausports_"
 const sportsChannels = [
     { id: 'ausports_kayo1', name: 'Kayo Sports 1', url: 'https://i.mjh.nz/au/Sydney/tv.kayo.1.m3u8', logo: 'https://i.mjh.nz/au/Sydney/tv.kayo.1.png' },
     { id: 'ausports_fox501', name: 'Fox Sports 501', url: 'https://i.mjh.nz/au/Sydney/tv.fox.501.m3u8', logo: 'https://i.mjh.nz/au/Sydney/tv.fox.501.png' },
@@ -8,13 +9,13 @@ const sportsChannels = [
 ];
 
 const manifest = {
-    id: 'com.au.sports.fixed.playback',
-    version: '2.5.0',
+    id: 'com.au.sports.fixed.stream',
+    version: '3.0.0',
     name: 'AU Sports Live',
-    description: 'Live AU Sports (Fixed Playback)',
+    description: 'Live AU Sports (Stream Fix)',
     resources: ['catalog', 'meta', 'stream'],
     types: ['tv'],
-    idPrefixes: ['ausports_'],
+    idPrefixes: ['ausports_'], // This MUST match the start of your channel IDs
     catalogs: [{ type: 'tv', id: 'ausports_cat', name: 'AU Sports' }]
 };
 
@@ -40,16 +41,16 @@ builder.defineMetaHandler((args) => {
 });
 
 builder.defineStreamHandler((args) => {
+    // CRITICAL: Log this to Vercel so we can see if Stremio is even asking
+    console.log("Requesting stream for ID:", args.id);
+
     const ch = sportsChannels.find(c => c.id === args.id);
     if (ch) {
         return Promise.resolve({
             streams: [{
-                title: 'Direct HLS Stream',
+                title: 'Live Stream (Sydney)',
                 url: ch.url,
-                behaviorHints: {
-                    isLive: true,
-                    notWebReady: false // Tells Stremio it's okay for web/app players
-                }
+                behaviorHints: { isLive: true }
             }]
         });
     }
@@ -59,15 +60,8 @@ builder.defineStreamHandler((args) => {
 const router = getRouter(builder.getInterface());
 
 module.exports = (req, res) => {
-    // ESSENTIAL: These headers tell Omni it's safe to play the video
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', '*');
-    
-    if (req.method === 'OPTIONS') {
-        res.status(204).end();
-        return;
-    }
-
+    res.setHeader('Content-Type', 'application/json');
     router(req, res, () => { res.status(404).send('Not found'); });
 };
